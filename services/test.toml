@@ -1,0 +1,37 @@
+[info]
+# A short description of the service
+description = "A test service"
+
+# Page to go to find info on the service
+homepage = "https://example.com"
+
+[service]
+# Rename the service to something other than the name of the toml file (without the .toml suffix)
+name = "test"
+
+# Allows different services to fulfill a name
+provides = "test"
+
+# Will start these other dependencies first
+depends = ["something_else"]
+
+# Iodine will not restart the process once it exits
+#oneshot = true
+
+[commands]
+# Commands are run in /bin/sh, with envvar
+# PID = service pid
+
+# Start command (required)
+[commands.start]
+#command = "/bin/echo HELLO WORLD"
+command = "exec cat"
+#user = "root"
+#group = "root"
+#directory = "/etc/test"
+
+# Reload command
+#[commands.reload]
+
+# Stop command (if not provided stop will send SIGTERM)
+#[commands.stop]

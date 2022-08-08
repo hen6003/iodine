@@ -9,7 +9,15 @@ edition = "2021"
 name = "iodine-init"
 path = "src/bin/iodine-init.rs"
 
+[[bin]]
+name = "iodine-service"
+path = "src/bin/iodine-service.rs"
+
 [dependencies]
 nix = "*"
 nc = "*"
 signal-hook = "*"
+toml = "*"
+serde = { version = "*", features = ["derive"] }
+crossbeam = "*"
+bincode = { version = "2.0.0-rc.1", features = ["serde"] }
