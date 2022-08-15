@@ -77,20 +77,18 @@ impl Command {
         command.arg("-c").arg(&self.command);
 
         if let Some(user) = &self.user {
-            let user = User::from_name(&user)?.ok_or(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "User not found",
-            ))?;
+            let user = User::from_name(user)?.ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "User not found")
+            })?;
 
             command.uid(user.uid.as_raw());
             command.gid(user.gid.as_raw());
         }
 
         if let Some(group) = &self.group {
-            let group = Group::from_name(&group)?.ok_or(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "Group not found",
-            ))?;
+            let group = Group::from_name(group)?.ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Group not found")
+            })?;
 
             command.gid(group.gid.as_raw());
         }

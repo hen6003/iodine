@@ -3,7 +3,7 @@ use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
 use std::env;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const SIGNALS: [i32; 5] = [SIGUSR1, SIGUSR2, SIGCHLD, SIGALRM, SIGINT];
 const TIME: u32 = 30;
 

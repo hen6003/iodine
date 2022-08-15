@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::ExitStatusExt;
-use std::process::{Child, Command};
+
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::{default, fs, path::PathBuf};
@@ -176,15 +176,10 @@ impl ServiceManager {
             // Make sure program is killed
             let process = *service.process.lock().unwrap();
 
-            match process {
-                iodine::ServiceStatus::Running(pid) => {
-                    if pid != 0 {
-                        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), signal)
-                            .unwrap();
-                    }
+            if let iodine::ServiceStatus::Running(pid) = process {
+                if pid != 0 {
+                    nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), signal).unwrap();
                 }
-
-                _ => (),
             }
         }
 
