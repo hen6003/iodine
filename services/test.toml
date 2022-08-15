@@ -25,7 +25,7 @@ depends = ["something_else"]
 # Start command (required)
 [commands.start]
 #command = "/bin/echo HELLO WORLD"
-command = "exec cat"
+command = "exec wev"
 #user = "root"
 #group = "root"
 #directory = "/etc/test"

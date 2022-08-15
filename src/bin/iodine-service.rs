@@ -3,7 +3,9 @@ use crossbeam::channel;
 use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::process::ExitStatusExt;
 use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::{default, fs, path::PathBuf};
 
@@ -14,7 +16,8 @@ struct Service {
 impl Service {
     fn start(self) -> ServiceThread {
         let (send, commands) = channel::unbounded();
-        let (main_thread, recv) = channel::unbounded();
+        let process_info = Arc::new(Mutex::new(iodine::ServiceStatus::Down));
+        let process = process_info.clone();
 
         thread::spawn(move || {
             let mut want_up = true;
@@ -30,22 +33,36 @@ impl Service {
                         .spawn()
                         .unwrap();
 
-                    main_thread.send(process.id()).unwrap();
+                    *process_info.lock().unwrap() = iodine::ServiceStatus::Running(process.id());
 
                     // If oneshot, service is no longer wanted up
                     want_up = !self.data.service.oneshot;
 
                     // Wait for process to exit
-                    process.wait().unwrap();
+                    let wait = process.wait().unwrap();
+
+                    let exit_status = if let Some(code) = wait.code() {
+                        iodine::ExitStatus::Code(code as u8)
+                    } else if let Some(signal) = wait.signal() {
+                        iodine::ExitStatus::Signal(signal)
+                    } else {
+                        unreachable!()
+                    };
+
+                    *process_info.lock().unwrap() = iodine::ServiceStatus::Crashed(exit_status);
 
                     // Check for message from main thread
                     if let Ok(command) = commands.try_recv() {
                         use iodine::ServiceCommands;
 
                         match command {
-                            ServiceCommands::Down | ServiceCommands::Kill => want_up = false,
-                            ServiceCommands::Up | ServiceCommands::Restart => want_up = true,
-                            ServiceCommands::Status => todo!(),
+                            ServiceCommands::Down | ServiceCommands::Kill => {
+                                want_up = false;
+
+                                *process_info.lock().unwrap() = iodine::ServiceStatus::Down;
+                            }
+                            ServiceCommands::Up | ServiceCommands::Restart => (), // Already up
+                            ServiceCommands::Status => unreachable!(),
                         }
                     }
                 } else {
@@ -54,16 +71,16 @@ impl Service {
                         use iodine::ServiceCommands;
 
                         match command {
-                            ServiceCommands::Down | ServiceCommands::Kill => want_up = false,
+                            ServiceCommands::Down | ServiceCommands::Kill => (), // Already down
                             ServiceCommands::Up | ServiceCommands::Restart => want_up = true,
-                            ServiceCommands::Status => todo!(),
+                            ServiceCommands::Status => unreachable!(),
                         }
                     }
                 }
             }
         });
 
-        ServiceThread { recv, send }
+        ServiceThread { process, send }
     }
 }
 
@@ -74,7 +91,7 @@ impl From<iodine::ServiceFile> for Service {
 }
 
 struct ServiceThread {
-    recv: channel::Receiver<u32>,
+    process: Arc<Mutex<iodine::ServiceStatus>>,
     send: channel::Sender<iodine::ServiceCommands>,
 }
 
@@ -92,8 +109,6 @@ impl ServiceManager {
         // Setup service names for starting later
         for service_path in service_paths {
             let service_path = service_path.unwrap().path();
-
-            println!("path: {:?}", service_path);
 
             let mut file_data = String::new();
 
@@ -147,19 +162,37 @@ impl ServiceManager {
             bincode::decode_from_std_read(&mut stream, config::standard())
                 .expect("Failed to decode message");
 
-        // Send message
         let service = self.running_services.get(&message.service).unwrap();
-        service.send.send(message.command).unwrap();
 
-        // Make sure program is killed
-        let pid = service.recv.recv().unwrap();
-        if pid != 0 {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(pid as i32),
-                nix::sys::signal::SIGTERM,
-            )
-            .unwrap();
+        if message.command != iodine::ServiceCommands::Status {
+            let signal = if message.command == iodine::ServiceCommands::Kill {
+                nix::sys::signal::SIGKILL
+            } else {
+                nix::sys::signal::SIGTERM
+            };
+
+            service.send.send(message.command).unwrap();
+
+            // Make sure program is killed
+            let process = *service.process.lock().unwrap();
+
+            match process {
+                iodine::ServiceStatus::Running(pid) => {
+                    if pid != 0 {
+                        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), signal)
+                            .unwrap();
+                    }
+                }
+
+                _ => (),
+            }
         }
+
+        // Let process start
+        thread::sleep(std::time::Duration::from_millis(1));
+
+        let process = *service.process.lock().unwrap();
+        bincode::encode_into_std_write(process, &mut stream, config::standard()).unwrap();
     }
 
     fn init(&mut self) {

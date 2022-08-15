@@ -7,13 +7,26 @@ use std::process;
 
 pub const SOCK_LOCATION: &str = "iodine.sock";
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Decode, Encode)]
+pub enum ExitStatus {
+    Code(u8),
+    Signal(i32),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Decode, Encode)]
+pub enum ServiceStatus {
+    Running(u32),
+    Crashed(ExitStatus),
+    Down,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Decode, Encode)]
 pub struct SockMessage {
     pub service: String,
     pub command: ServiceCommands,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Decode, Encode)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Decode, Encode, PartialEq, Eq)]
 pub enum ServiceCommands {
     Down, // Sends term
     Kill, // Sends kill
